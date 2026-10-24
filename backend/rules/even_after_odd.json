@@ -1,0 +1,9 @@
+{
+  "name": "Even after odd",
+  "source": "Denis, wait for an odd last digit then trade even",
+  "symbols": ["R_100"],
+  "trigger": {"seq": [{"parity": "odd"}]},
+  "contract": {"type": "even_odd", "side": "even"},
+  "duration": 1,
+  "margin": 0.0235
+}

@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --bg: #fff6f4;
+  --surface: #ffffff;
+  --text: #1b1215;
+  --muted: #7d6c72;
+  --brand: #ff444f;
+  --on-brand: #ffffff;
+  --lime: #b8f26a;
+  --honey: #ffc84a;
+  --berry: #a95bff;
+  --sky: #45c8f2;
+  --deep: #2b1a3f;
+  --on-deep: #ffffff;
+  --ink: #1b1215;
+  --soft: 0 8px 24px -12px rgb(110 40 50 / 0.28);
+  --lift: 0 10px 36px -8px rgb(110 40 50 / 0.35);
+  --pop: 0 14px 30px -12px rgb(255 68 79 / 0.6);
+}
+
+.dark {
+  --bg: #120d10;
+  --surface: #1e161a;
+  --text: #fff1f0;
+  --muted: #b09ba1;
+  --brand: #ff5560;
+  --on-brand: #1b0a0c;
+  --deep: #3d2760;
+  --soft: 0 8px 24px -12px rgb(0 0 0 / 0.7);
+  --lift: 0 10px 36px -8px rgb(0 0 0 / 0.8);
+  --pop: 0 14px 30px -12px rgb(255 85 96 / 0.45);
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-brand: var(--brand);
+  --color-on-brand: var(--on-brand);
+  --color-lime: var(--lime);
+  --color-honey: var(--honey);
+  --color-berry: var(--berry);
+  --color-sky: var(--sky);
+  --color-deep: var(--deep);
+  --color-on-deep: var(--on-deep);
+  --color-ink: var(--ink);
+  --font-display: "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --shadow-soft: var(--soft);
+  --shadow-lift: var(--lift);
+  --shadow-pop: var(--pop);
+}
+
+@layer base {
+  html {
+    background: var(--bg);
+  }
+
+  body {
+    @apply bg-bg font-sans text-text antialiased;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: none;
+  }
+
+  button,
+  a {
+    touch-action: manipulation;
+  }
+}
+
+html.theme-anim,
+html.theme-anim *,
+html.theme-anim *::before,
+html.theme-anim *::after {
+  transition:
+    background-color 0.4s ease,
+    color 0.4s ease,
+    border-color 0.4s ease,
+    box-shadow 0.4s ease !important;
+}

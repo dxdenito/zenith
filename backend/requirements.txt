@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+sqlalchemy[asyncio]
+asyncpg
+pydantic[email]
+pydantic-settings
+pyjwt
+bcrypt
+cryptography
+httpx
+websockets
+numpy
+scipy
+scikit-learn

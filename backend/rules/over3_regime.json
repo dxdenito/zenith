@@ -1,0 +1,19 @@
+{
+  "name": "Over 3 regime, plain vols, 1 tick",
+  "source": "outside over/under bar strategy",
+  "symbols": ["R_100", "R_50"],
+  "window": 100,
+  "trigger": {
+    "seq": [[
+      {"freq_below": {"digits": [0, 1, 2, 3], "pct": 10.0}},
+      {"freq_at_least": {"digits": [4, 5, 6, 7, 8, 9], "pct": 11.0, "count": 2}},
+      {"top_in": {"rank": 2, "digits": [4, 5, 6, 7, 8, 9]}},
+      {"pointer_is_least_of": [1, 2, 3]}
+    ]],
+    "then": {"within": 2, "cond": {"digit_in": [4, 5, 6, 7, 8]}}
+  },
+  "contract": {"type": "over_under", "side": "over", "barrier": 3},
+  "duration": 1,
+  "margin": 0.0235,
+  "target_trades": 2000
+}
