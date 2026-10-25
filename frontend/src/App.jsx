@@ -9,6 +9,7 @@ import Home from "./pages/Home";
 import Placeholder from "./pages/Placeholder";
 import Settings from "./pages/Settings";
 import Markets from "./pages/Markets";
+import Trade from "./pages/Trade";
 
 function Splash() {
   return (
@@ -44,7 +45,7 @@ export default function App() {
         <Route index element={<Home />} />
         <Route path="markets" element={<Markets />} />
         <Route path="analysis" element={<Placeholder />} />
-        <Route path="trade" element={<Placeholder />} />
+        <Route path="trade" element={<Trade />} />
         <Route path="settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

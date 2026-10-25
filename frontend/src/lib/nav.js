@@ -33,6 +33,7 @@ export const navItems = [
     on: "text-white",
     blurb: "Place and track trades safely, starting with Demo.",
   },
+  
   {
     to: "/settings",
     label: "Settings",

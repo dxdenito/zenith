@@ -10,7 +10,8 @@ from app.config import settings
 from app.database import Base, SessionLocal, engine
 from app.market_sync import sync_symbols
 from app.models import Symbol
-from app.routers import accounts, auth, markets
+from app.routers import accounts, auth, markets, trading
+from app.trade_engine import BotManager
 
 
 async def initial_sync():
@@ -29,11 +30,13 @@ async def lifespan(app: FastAPI):
         await conn.run_sync(Base.metadata.create_all)
     collector = Collector()
     app.state.collector = collector
+    app.state.bots = BotManager(collector)
     tasks = [
         asyncio.create_task(initial_sync()),
         asyncio.create_task(collector.run()),
     ]
     yield
+    await app.state.bots.shutdown()
     for task in tasks:
         task.cancel()
     await asyncio.gather(*tasks, return_exceptions=True)
@@ -53,6 +56,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(accounts.router)
 app.include_router(markets.router)
+app.include_router(trading.router)
 
 
 @app.get("/health")
