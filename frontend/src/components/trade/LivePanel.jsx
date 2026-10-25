@@ -40,6 +40,16 @@ export default function LivePanel({ session, onStop, busy }) {
             <Tile label="Cap hits" value={session.cap_hits} />
           </>
         )}
+        {session.session_target != null && (
+          <>
+            <Tile
+              label="This session"
+              value={`${money(session.session_profit)} of +${Number(session.session_target).toFixed(2)}`}
+              valueClass={toneOf(session.session_profit)}
+            />
+            <Tile label="Targets hit / sessions" value={`${session.targets_hit} / ${session.sessions_done}`} />
+          </>
+        )}
         <Tile
           label="Last tick"
           value={age == null ? "—" : `${age}s ago`}
@@ -48,6 +58,13 @@ export default function LivePanel({ session, onStop, busy }) {
       </div>
       {session.settling && (
         <p className="text-sm font-bold text-muted">A contract is open. Waiting for its result.</p>
+      )}
+      {session.session_target != null && session.running && (
+        <p className="text-sm font-bold text-muted">
+          {session.rest_until
+            ? `Resting until ${new Date(session.rest_until * 1000).toLocaleTimeString()}.`
+            : `Session window ends at ${new Date(session.window_end * 1000).toLocaleTimeString()}.`}
+        </p>
       )}
       {session.running && (
         <motion.button

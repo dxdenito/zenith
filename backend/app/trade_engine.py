@@ -82,7 +82,18 @@ class TickBuffer:
 
 
 class BotSession:
-    def __init__(self, collector, user_id, tenant_id, account, strategy_key, symbol, stake, martingale=None):
+    def __init__(
+        self,
+        collector,
+        user_id,
+        tenant_id,
+        account,
+        strategy_key,
+        symbol,
+        stake,
+        martingale=None,
+        session=None,
+    ):
         entry = CATALOGUE[strategy_key]
         self.collector = collector
         self.user_id = user_id
@@ -101,6 +112,14 @@ class BotSession:
         self.on_cap = martingale["on_cap"] if martingale else "stop"
         self.step = 0
         self.cap_hits = 0
+        self.session_target = float(session["target"]) if session else None
+        self.window_seconds = int(session["window_minutes"]) * 60 if session else 3600
+        self.on_target = session["on_target"] if session else "rest"
+        self.window_end = (int(time.time()) // self.window_seconds + 1) * self.window_seconds
+        self.session_base = 0.0
+        self.rest_until = None
+        self.sessions_done = 0
+        self.targets_hit = 0
         self.spec = copy.deepcopy(entry["spec"])
         self.spec["symbols"] = [symbol]
         self.contract_type, self.barrier = deriv_contract(self.spec["contract"])
@@ -151,6 +170,12 @@ class BotSession:
             "max_steps": self.max_steps,
             "on_cap": self.on_cap,
             "cap_hits": self.cap_hits,
+            "session_target": self.session_target,
+            "session_profit": round(self.profit - self.session_base, 2),
+            "window_end": self.window_end if self.session_target is not None else None,
+            "rest_until": self.rest_until,
+            "targets_hit": self.targets_hit,
+            "sessions_done": self.sessions_done,
             "started_at": self.started_at,
             "signals": self.signals,
             "trades": self.trades,
@@ -162,6 +187,39 @@ class BotSession:
             "last_tick": self.last_tick,
             "running": self.running,
         }
+
+    def roll_window(self, now):
+        self.session_base = self.profit
+        self.sessions_done += 1
+        self.window_end = (int(now) // self.window_seconds + 1) * self.window_seconds
+        self.rest_until = None
+
+    def session_gate(self):
+        if self.session_target is None:
+            return True
+        now = time.time()
+        if self.rest_until is not None:
+            if now < self.rest_until:
+                return False
+            self.roll_window(now)
+            self.message = "New session started."
+            return True
+        if now >= self.window_end and self.step == 0:
+            self.roll_window(now)
+        return True
+
+    def check_session(self):
+        if self.session_target is None:
+            return
+        gained = self.profit - self.session_base
+        if gained < self.session_target:
+            return
+        self.targets_hit += 1
+        if self.on_target == "stop":
+            raise TradingHalt(f"Session target of {self.session_target:.2f} reached ({gained:+.2f}). Stopped.")
+        self.rest_until = self.window_end
+        until = datetime.fromtimestamp(self.rest_until, tz=timezone.utc).strftime("%H:%M")
+        self.message = f"Target reached ({gained:+.2f}). Resting until {until} UTC."
 
     async def ask(self, ws, payload):
         self.req += 1
@@ -393,20 +451,25 @@ class BotSession:
             self.wins += 1
             self.streak = 0
             self.step = 0
-            return
-        self.losses += 1
-        self.streak += 1
-        if not self.martingale:
-            return
-        self.step += 1
-        if self.step >= self.max_steps:
-            self.cap_hits += 1
-            self.step = 0
-            if self.on_cap == "stop":
-                raise TradingHalt(
-                    f"Martingale cap reached: {self.max_steps} losses in a row. Stopped to cut losses."
-                )
-            self.message += f" Cap reached after {self.max_steps} losses. Back to the base stake."
+        else:
+            self.losses += 1
+            self.streak += 1
+            if self.martingale:
+                self.step += 1
+                if self.step >= self.max_steps:
+                    self.cap_hits += 1
+                    self.step = 0
+                    if self.on_cap == "stop":
+                        raise TradingHalt(
+                            f"Martingale cap reached: {self.max_steps} losses in a row. Stopped to cut losses."
+                        )
+                    if self.session_target is not None:
+                        self.rest_until = self.window_end
+                        self.message += " Cap reached. Resting until the next session."
+                    else:
+                        self.message += f" Cap reached after {self.max_steps} losses. Back to the base stake."
+        if self.step == 0:
+            self.check_session()
 
     async def try_trade(self, ws, signal_epoch):
         if not await self.check_limits():
@@ -483,6 +546,8 @@ class BotSession:
             for r in fresh:
                 self.buffer.add(r["epoch"], r["quote"], r["digit"])
             self.last_tick = time.time()
+            if not self.session_gate():
+                continue
             epoch, quote, digit = self.buffer.arrays()
             if not live_signal(self.spec, epoch, quote, digit, self.interval):
                 continue

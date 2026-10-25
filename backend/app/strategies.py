@@ -1,17 +1,20 @@
+import numpy as np
+
 from app.register_rules import breakeven, fair_probability, validate_spec
 
 DISCLAIMER_VERSION = "2026-10-24-2"
 LIVE_CONFIRMATION = "ENABLE LIVE TRADING"
+MARTINGALE_MODES = {"demo"}
 
 DISCLAIMER_POINTS = [
     "Zenith is an educational research tool. It is not financial advice.",
     "Every strategy in Zenith was tested on historical data and none showed an edge over the house. Deriv's synthetic indices are generated randomly, and every contract pays less than the true odds.",
     "Expect to lose money. Over many trades the average result is a loss of roughly 1% to 3% of the amount staked on each trade. Some contracts win often but lose heavily on the rare loss, and a run of losses can wipe out a balance quickly.",
+    "Staking systems such as martingale do not improve your odds. They increase how much you stake, win small amounts often, and lose a large amount on a losing streak. The average loss per amount staked stays the same, and the total you stake goes up.",
     "Past results, including any winning streak you see, do not predict the next trade.",
     "Trading starts on demo accounts only. Real-money trading stays off until you switch it on in Settings, and the server enforces your limits whatever the app shows.",
     "The software can contain errors, lose its connection, or fail to place, track or close a trade. You are solely responsible for every trade placed through your account.",
     "Never trade money you cannot afford to lose. If trading is causing you stress or harm, stop and seek help.",
-        "Staking systems such as martingale do not improve your odds. They increase how much you stake, win small amounts often, and lose a large amount on a losing streak. The average loss per amount staked stays the same, and the total you stake goes up.",
 ]
 
 
@@ -90,8 +93,6 @@ def contract_label(spec):
         base = contract["side"].capitalize()
     return f"{base}, {ticks}"
 
-MARTINGALE_MODES = {"demo"}
-
 
 def cycle_stakes(base, multiplier, steps):
     return [round(base * multiplier**k, 2) for k in range(steps)]
@@ -124,4 +125,50 @@ def martingale_preview(entry, base, multiplier, steps):
         "first_step_win": wins[0],
         "last_step_win": wins[-1],
         "recovers_every_step": min(wins) > 0,
+    }
+
+
+def session_preview(entry, base, multiplier, steps, target, seed=7):
+    fair = fair_probability(entry["spec"]["contract"])
+    ratio = 1.0 / entry["break_even"]
+    cost = 1.0 - fair * ratio
+    stakes = cycle_stakes(base, multiplier, steps)
+    runs = 20000 if target <= 20 * base else 4000
+    rng = np.random.default_rng(seed)
+    results = np.empty(runs)
+    staked = np.empty(runs)
+    reached = np.zeros(runs, dtype=bool)
+    for i in range(runs):
+        profit = 0.0
+        spent = 0.0
+        for _ in range(3000):
+            lost = 0.0
+            cycle_won = False
+            for stake in stakes:
+                spent += stake
+                if rng.random() < fair:
+                    profit += stake * (ratio - 1.0) - lost
+                    cycle_won = True
+                    break
+                lost += stake
+            if not cycle_won:
+                profit -= lost
+                break
+            if profit >= target:
+                reached[i] = True
+                break
+        results[i] = profit
+        staked[i] = spent
+    capped = ~reached
+    return {
+        "runs": runs,
+        "chance_target": float(reached.mean()),
+        "chance_cap": float(capped.mean()),
+        "avg_when_target": float(results[reached].mean()) if reached.any() else None,
+        "avg_when_cap": float(results[capped].mean()) if capped.any() else None,
+        "expected_per_session": float(-cost * staked.mean()),
+        "simulated_mean": float(results.mean()),
+        "simulated_error": float(results.std() / np.sqrt(runs)),
+        "p5": float(np.percentile(results, 5)),
+        "median": float(np.median(results)),
     }

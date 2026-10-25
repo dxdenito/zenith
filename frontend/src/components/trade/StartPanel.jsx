@@ -3,12 +3,15 @@ import { Link } from "react-router-dom";
 import { motion } from "motion/react";
 import { Play } from "lucide-react";
 import MartingaleBox from "./MartingaleBox";
+import SessionBox from "./SessionBox";
 
 export default function StartPanel({ strategy, active, mode, running, busy, onStart }) {
   const [symbol, setSymbol] = useState("");
   const [stake, setStake] = useState("1");
   const [mg, setMg] = useState(false);
   const [mgCfg, setMgCfg] = useState({ multiplier: "2", max_steps: "4", on_cap: "stop" });
+  const [ses, setSes] = useState(false);
+  const [sesCfg, setSesCfg] = useState({ target: "5", window_minutes: "60", on_target: "rest" });
 
   useEffect(() => {
     if (!strategy.symbols.some((s) => s.symbol === symbol)) {
@@ -19,6 +22,10 @@ export default function StartPanel({ strategy, active, mode, running, busy, onSt
   useEffect(() => {
     if (mode !== "demo") setMg(false);
   }, [mode]);
+
+  useEffect(() => {
+    if (!mg) setSes(false);
+  }, [mg]);
 
   function submit() {
     onStart({
@@ -32,6 +39,14 @@ export default function StartPanel({ strategy, active, mode, running, busy, onSt
             on_cap: mgCfg.on_cap,
           }
         : null,
+      session:
+        mg && ses
+          ? {
+              target: Number(sesCfg.target),
+              window_minutes: Number(sesCfg.window_minutes),
+              on_target: sesCfg.on_target,
+            }
+          : null,
     });
   }
 
@@ -46,7 +61,7 @@ export default function StartPanel({ strategy, active, mode, running, busy, onSt
       {mode === "real" && (
         <p className="mt-2 rounded-2xl bg-brand/10 p-3 text-sm font-extrabold text-brand">
           This is a real-money account. The server refuses to start unless live trading is enabled in{" "}
-          <Link to="/settings" className="underline">
+          <Link to="/settings?tab=trading" className="underline">
             Settings
           </Link>
           .
@@ -91,6 +106,17 @@ export default function StartPanel({ strategy, active, mode, running, busy, onSt
         setCfg={setMgCfg}
         locked={running}
         allowed={mode === "demo"}
+      />
+      <SessionBox
+        strategy={strategy.key}
+        stake={stake}
+        mgCfg={mgCfg}
+        enabled={ses}
+        setEnabled={setSes}
+        cfg={sesCfg}
+        setCfg={setSesCfg}
+        locked={running}
+        available={mg}
       />
       <motion.button
         type="button"

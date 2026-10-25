@@ -13,11 +13,12 @@ from app.strategies import (
     DISCLAIMER_POINTS,
     DISCLAIMER_VERSION,
     LIVE_CONFIRMATION,
-    contract_label,
-    deriv_contract,
     MARTINGALE_MODES,
+    contract_label,
     cycle_stakes,
+    deriv_contract,
     martingale_preview,
+    session_preview,
 )
 from app.trade_engine import HARD_LIMITS, BotSession, effective_limits
 from app.trade_models import Trade, TradingSettings
@@ -46,11 +47,18 @@ class MartingaleIn(BaseModel):
     on_cap: str = Field(pattern="^(stop|reset)$")
 
 
+class SessionIn(BaseModel):
+    target: float = Field(gt=0)
+    window_minutes: int = Field(ge=5, le=1440)
+    on_target: str = Field(pattern="^(rest|stop)$")
+
+
 class StartIn(BaseModel):
     strategy: str
     symbol: str
     stake: float = Field(gt=0)
     martingale: MartingaleIn | None = None
+    session: SessionIn | None = None
 
 
 async def get_settings(db: AsyncSession, user: User) -> TradingSettings:
@@ -103,6 +111,7 @@ def trade_out(t: Trade) -> dict:
         "contract_type": t.contract_type,
         "barrier": t.barrier,
         "duration": t.duration,
+        "step": t.step,
         "stake": t.stake,
         "payout": t.payout,
         "status": t.status,
@@ -110,7 +119,6 @@ def trade_out(t: Trade) -> dict:
         "signal_epoch": t.signal_epoch,
         "entry_epoch": t.entry_epoch,
         "error": t.error,
-        "step": t.step,
     }
 
 
@@ -195,8 +203,8 @@ async def update_settings(
         row.live_enabled = False
     await db.commit()
     if switched_off:
-        session = request.app.state.bots.get(user.id)
-        if session is not None and session.running and session.mode == "real":
+        running = request.app.state.bots.get(user.id)
+        if running is not None and running.running and running.mode == "real":
             await request.app.state.bots.stop(user.id)
     return settings_out(row, user)
 
@@ -230,6 +238,27 @@ async def strategies(user: User = Depends(current_user), db: AsyncSession = Depe
                 "symbols": usable,
             }
         )
+    return out
+
+
+@router.get("/martingale/preview")
+async def preview_martingale(
+    strategy: str,
+    stake: float = Query(gt=0),
+    multiplier: float = Query(ge=1.1, le=3.0),
+    max_steps: int = Query(ge=2, le=6),
+    target: float | None = Query(default=None, gt=0),
+    user: User = Depends(current_user),
+):
+    entry = CATALOGUE.get(strategy)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Unknown strategy.")
+    out = martingale_preview(entry, stake, multiplier, max_steps)
+    out["session"] = None
+    if target is not None:
+        if target > 100 * stake:
+            raise HTTPException(status_code=422, detail="The target is too large for this stake.")
+        out["session"] = session_preview(entry, stake, multiplier, max_steps, target)
     return out
 
 
@@ -292,8 +321,18 @@ async def start(
                 status_code=422,
                 detail=f"A full losing cycle costs {sum(stakes):.2f}, above your daily loss limit of {limits['daily_loss_cap']:.2f}.",
             )
+    session_cfg = None
+    if payload.session is not None:
+        if martingale is None:
+            raise HTTPException(
+                status_code=422,
+                detail="A session target needs martingale staking so each session has a defined worst case.",
+            )
+        session_cfg = payload.session.model_dump()
+        if session_cfg["target"] > 100 * payload.stake:
+            raise HTTPException(status_code=422, detail="The target is too large for this stake.")
     bots = request.app.state.bots
-    session = BotSession(
+    bot = BotSession(
         collector,
         user.id,
         user.tenant_id,
@@ -302,12 +341,13 @@ async def start(
         payload.symbol,
         payload.stake,
         martingale,
+        session_cfg,
     )
     try:
-        bots.start(session)
+        bots.start(bot)
     except RuntimeError:
         raise HTTPException(status_code=409, detail="A bot is already running. Stop it first.")
-    return session.snapshot()
+    return bot.snapshot()
 
 
 @router.post("/stop")
@@ -346,16 +386,3 @@ async def trades(
         )
     ).all()
     return {"trades": [trade_out(t) for t in rows[:limit]], "stats": stats_for(list(rows))}
-
-@router.get("/martingale/preview")
-async def preview_martingale(
-    strategy: str,
-    stake: float = Query(gt=0),
-    multiplier: float = Query(ge=1.1, le=3.0),
-    max_steps: int = Query(ge=2, le=6),
-    user: User = Depends(current_user),
-):
-    entry = CATALOGUE.get(strategy)
-    if entry is None:
-        raise HTTPException(status_code=404, detail="Unknown strategy.")
-    return martingale_preview(entry, stake, multiplier, max_steps)
